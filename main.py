@@ -10,7 +10,7 @@ import io
 app = Flask(__name__)
 
 # Allowed Users (Telegram User IDs)
-ALLOWED_USERS = [123456789, 987654321]  # Add allowed user IDs here
+ALLOWED_USERS = [7932502148]  # Add allowed user IDs here
 
 # Conversation states
 CHOOSE_ACTION, ADD_BUY, ADD_SELL, CHOOSE_PRODUCT, SELL_DETAILS = range(5)
