@@ -20,7 +20,7 @@ dbx = dropbox.Dropbox(os.getenv('DROPBOX_ACCESS_TOKEN'))
 
 # Function to download Excel from Dropbox
 def download_excel():
-    _, res = dbx.files_download('/path/to/excel/Phone Management.xlsx')  # Replace with your file path
+    _, res = dbx.files_download('/Apps/Phone%20Reseller%20Excel/Phone%20Management.pdf')  # Replace with your file path
     return io.BytesIO(res.content)
 
 # Function to upload the modified Excel back to Dropbox
