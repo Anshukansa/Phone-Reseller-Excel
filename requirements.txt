@@ -3,3 +3,4 @@ python-telegram-bot==20.0  # Replace with your installed version
 pandas==1.5           # Replace with your installed version
 dropbox==11.34.0             # Replace with your installed version
 openpyxl==3.0.10             # Replace with your installed version
+dropbox==11.34.0  # or the version you were using locally
