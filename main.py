@@ -4,13 +4,14 @@ import logging
 import pandas as pd
 import dropbox
 import openpyxl
-from telegram import Update, ReplyKeyboardMarkup
+from datetime import datetime, timedelta
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, filters, ContextTypes
 
+# Environment Variables
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 DROPBOX_ACCESS_TOKEN = os.getenv('DROPBOX_ACCESS_TOKEN')
 
-print(TELEGRAM_BOT_TOKEN)  # For debugging purposes, ensure the correct token is being printed
 # Set up logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,26 +25,29 @@ CHOOSE_ACTION, ADD_BUY, ADD_SELL, CHOOSE_PRODUCT, SELL_DETAILS = range(5)
 # Dropbox Client
 dbx = dropbox.Dropbox(os.getenv('DROPBOX_ACCESS_TOKEN'))
 
-
 # Function to download Excel from Dropbox
 def download_excel():
     try:
-        logger.info(f"Using Dropbox Access Token: {os.getenv('DROPBOX_ACCESS_TOKEN')}")
         _, res = dbx.files_download('/Phone Management.xlsx')
         return io.BytesIO(res.content)
-    except dropbox.exceptions.HttpError as e:
-        logger.error(f"HTTP Error: {e}")
-    except dropbox.exceptions.ApiError as e:
-        logger.error(f"API Error: {e}")
     except Exception as e:
         logger.error(f"Error: {e}")
     return None
 
 # Function to upload the modified Excel back to Dropbox
 def upload_excel(file_content):
-    dbx.files_upload(file_content.getvalue(), '/Phone Management.xlsx',
-                     mode=dropbox.files.WriteMode.overwrite)
+    dbx.files_upload(file_content.getvalue(), '/Phone Management.xlsx', mode=dropbox.files.WriteMode.overwrite)
 
+# Function to process date input (e.g., "T" for today, "Y" for yesterday, or "MM-DD")
+def get_processed_date(user_input):
+    today = datetime.today()
+    if user_input.strip().upper() == 'T':
+        return today.strftime('%Y-%m-%d')
+    elif user_input.strip().upper() == 'Y':
+        yesterday = today - timedelta(days=1)
+        return yesterday.strftime('%Y-%m-%d')
+    else:
+        return f"{today.year}-{user_input.strip()}"  # Append current year
 
 # Function to check if user is allowed
 def allowed_user(func):
@@ -53,20 +57,22 @@ def allowed_user(func):
             await update.message.reply_text("You are not allowed to use this bot.")
             return ConversationHandler.END
         return await func(update, context)
-
     return wrapper
 
-
-# Start conversation
+# Command to start conversation
 @allowed_user
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_keyboard = [['1: Add Buy Entry', '2: Add Sell Entry']]
     await update.message.reply_text(
-        "Welcome! Choose an option by typing the number:\n1: Add Buy Entry\n2: Add Sell Entry",
+        "Welcome! Choose an option by typing the number:\n1: Add Buy Entry\n2: Add Sell Entry\nType /cancel to exit at any time.",
         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
     )
     return CHOOSE_ACTION
 
+# Cancel command to exit conversation
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Operation canceled. No data has been saved.", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
 
 # Handle chosen action (Buy or Sell)
 @allowed_user
@@ -74,7 +80,8 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = update.message.text
     if action.startswith('1'):
         await update.message.reply_text(
-            "Please provide the details in this format:\nSerial Number, Model, Storage, Purchase Price, Purchase Date")
+            "Please provide the details in this format:\nSerial Number, Model, Storage, Purchase Price, Purchase Date (MM-DD or 'T'/'Y')"
+        )
         return ADD_BUY
     elif action.startswith('2'):
         # Fetch unsold products
@@ -97,14 +104,15 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Choose a product to sell by number:\n{products_list}")
         return CHOOSE_PRODUCT
 
-
 # Handle buy entry
 @allowed_user
 async def add_buy_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         data = update.message.text.split(',')
-        if len(data) != 5:
+        if len(data) != 5:  # Now we only expect 4 fields, no need to ask for year
             raise ValueError("Incorrect format. Provide 5 values separated by commas.")
+
+        purchase_date = get_processed_date(data[4].strip())  # Process the date
 
         # Download Excel
         excel_file = download_excel()
@@ -122,7 +130,7 @@ async def add_buy_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'Storage': data[2].strip(),
             'Purchase Price': data[3].strip(),
             'Sell Price': None,
-            'Purchase Date': data[4].strip(),
+            'Purchase Date': purchase_date,
             'Sell Date': None
         }])
 
@@ -148,7 +156,6 @@ async def add_buy_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return ConversationHandler.END
 
-
 # Handle product selection for sell
 @allowed_user
 async def choose_product(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -160,12 +167,11 @@ async def choose_product(update: Update, context: ContextTypes.DEFAULT_TYPE):
             raise ValueError("Invalid product number.")
 
         context.user_data['selected_product'] = product_index
-        await update.message.reply_text("Provide the Sell Date and Sell Price (format: YYYY-MM-DD, Price):")
+        await update.message.reply_text("Provide the Sell Date (MM-DD or 'T'/'Y') and Sell Price (format: Price):")
         return SELL_DETAILS
     except Exception as e:
         await update.message.reply_text(f"Error: {e}")
         return ConversationHandler.END
-
 
 # Handle sell entry
 @allowed_user
@@ -175,7 +181,7 @@ async def add_sell_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(data) != 2:
             raise ValueError("Incorrect format. Provide 2 values separated by a comma.")
 
-        sell_date = data[0].strip()
+        sell_date = get_processed_date(data[0].strip())  # Process the date
         sell_price = data[1].strip()
 
         # Download Excel
@@ -212,8 +218,7 @@ async def add_sell_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return ConversationHandler.END
 
-
-# Define conversation handler with states
+# Define conversation handler with states and /cancel command
 conv_handler = ConversationHandler(
     entry_points=[CommandHandler('start', start)],
     states={
@@ -222,15 +227,21 @@ conv_handler = ConversationHandler(
         CHOOSE_PRODUCT: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_product)],
         SELL_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_sell_entry)]
     },
-    fallbacks=[]
+    fallbacks=[CommandHandler('cancel', cancel)]  # Allow exiting with /cancel
 )
 
+# Set up the application
+async def main():
+    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
-# Initialize Telegram Bot
-def main():
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()  # Pass the actual variable
+    # Register the conversation handler
     application.add_handler(conv_handler)
-    application.run_polling()
+
+    # Run the bot
+    await application.start()
+    await application.updater.start_polling()
+    await application.idle()
 
 if __name__ == '__main__':
-    main()
+    import asyncio
+    asyncio.run(main())
