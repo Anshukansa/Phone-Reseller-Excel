@@ -4,7 +4,8 @@ import logging
 import pandas as pd
 import dropbox
 import openpyxl
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from datetime import datetime, timedelta
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, filters, ContextTypes
 
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -57,12 +58,29 @@ def allowed_user(func):
     return wrapper
 
 
+# Function to process date input
+def get_processed_date(user_input):
+    today = datetime.today()
+    if user_input.strip().upper() == 'T':
+        return today.strftime('%Y-%m-%d')
+    elif user_input.strip().upper() == 'Y':
+        yesterday = today - timedelta(days=1)
+        return yesterday.strftime('%Y-%m-%d')
+    else:
+        # Assuming input is MM-DD format, append the current year
+        return f"{today.year}-{user_input.strip()}"
+
+# Cancel command to exit conversation
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Operation canceled. No data has been saved.", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
+
 # Start conversation
 @allowed_user
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_keyboard = [['1: Add Buy Entry', '2: Add Sell Entry']]
     await update.message.reply_text(
-        "Welcome! Choose an option by typing the number:\n1: Add Buy Entry\n2: Add Sell Entry",
+        "Welcome! Choose an option by typing the number:\n1: Add Buy Entry\n2: Add Sell Entry\nType /cancel to exit at any time.",
         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
     )
     return CHOOSE_ACTION
