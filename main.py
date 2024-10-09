@@ -1,13 +1,15 @@
 import os
-import dropbox
-import pandas as pd
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler
-from flask import Flask
 import io
+import logging
+import pandas as pd
+import dropbox
+import openpyxl
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, filters, ContextTypes
 
-# Initialize Flask App
-app = Flask(__name__)
+# Set up logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Allowed Users (Telegram User IDs)
 ALLOWED_USERS = [7932502148]  # Add allowed user IDs here
@@ -18,72 +20,98 @@ CHOOSE_ACTION, ADD_BUY, ADD_SELL, CHOOSE_PRODUCT, SELL_DETAILS = range(5)
 # Dropbox Client
 dbx = dropbox.Dropbox(os.getenv('DROPBOX_ACCESS_TOKEN'))
 
+
 # Function to download Excel from Dropbox
 def download_excel():
-    _, res = dbx.files_download('/Apps/Phone%20Reseller%20Excel/Phone%20Management.pdf')  # Replace with your file path
-    return io.BytesIO(res.content)
+    try:
+        logger.info(f"Using Dropbox Access Token: {os.getenv('DROPBOX_ACCESS_TOKEN')}")
+        _, res = dbx.files_download('/Phone Management.xlsx')
+        return io.BytesIO(res.content)
+    except dropbox.exceptions.HttpError as e:
+        logger.error(f"HTTP Error: {e}")
+    except dropbox.exceptions.ApiError as e:
+        logger.error(f"API Error: {e}")
+    except Exception as e:
+        logger.error(f"Error: {e}")
+    return None
 
 # Function to upload the modified Excel back to Dropbox
 def upload_excel(file_content):
-    dbx.files_upload(file_content.getvalue(), '/path/to/excel/Phone Management.xlsx', mode=dropbox.files.WriteMode.overwrite)
+    dbx.files_upload(file_content.getvalue(), '/Phone Management.xlsx',
+                     mode=dropbox.files.WriteMode.overwrite)
+
 
 # Function to check if user is allowed
 def allowed_user(func):
-    def wrapper(update: Update, context):
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.message.from_user.id
         if user_id not in ALLOWED_USERS:
-            update.message.reply_text("You are not allowed to use this bot.")
+            await update.message.reply_text("You are not allowed to use this bot.")
             return ConversationHandler.END
-        return func(update, context)
+        return await func(update, context)
+
     return wrapper
+
 
 # Start conversation
 @allowed_user
-def start(update: Update, context):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_keyboard = [['1: Add Buy Entry', '2: Add Sell Entry']]
-    update.message.reply_text(
+    await update.message.reply_text(
         "Welcome! Choose an option by typing the number:\n1: Add Buy Entry\n2: Add Sell Entry",
         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
     )
     return CHOOSE_ACTION
 
+
 # Handle chosen action (Buy or Sell)
 @allowed_user
-def choose_action(update: Update, context):
+async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = update.message.text
     if action.startswith('1'):
-        update.message.reply_text("Please provide the details in this format:\nSerial Number, Model, Storage, Purchase Price, Purchase Date")
+        await update.message.reply_text(
+            "Please provide the details in this format:\nSerial Number, Model, Storage, Purchase Price, Purchase Date")
         return ADD_BUY
     elif action.startswith('2'):
         # Fetch unsold products
         excel_file = download_excel()
+        if excel_file is None:
+            await update.message.reply_text("Failed to download the Excel file.")
+            return ConversationHandler.END
+
         df = pd.read_excel(excel_file)
         unsold_products = df[df['Sell Date'].isna() & df['Sell Price'].isna()]
-        
+
         if unsold_products.empty:
-            update.message.reply_text("There are no unsold products.")
+            await update.message.reply_text("There are no unsold products.")
             return ConversationHandler.END
-        
-        products_list = "\n".join([f"{row.Index}: {row.Model} - {row['Serial Number']}" for row in unsold_products.itertuples()])
+
+        products_list = "\n".join(
+            [f"{row.Index}: {row[2]} - {row[1]}" for row in unsold_products.itertuples()])
+
         context.user_data['unsold_products'] = unsold_products
-        update.message.reply_text(f"Choose a product to sell by number:\n{products_list}")
+        await update.message.reply_text(f"Choose a product to sell by number:\n{products_list}")
         return CHOOSE_PRODUCT
+
 
 # Handle buy entry
 @allowed_user
-def add_buy_entry(update: Update, context):
+async def add_buy_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        # Get user input
         data = update.message.text.split(',')
         if len(data) != 5:
             raise ValueError("Incorrect format. Provide 5 values separated by commas.")
 
         # Download Excel
         excel_file = download_excel()
+        if excel_file is None:
+            await update.message.reply_text("Failed to download the Excel file.")
+            return ConversationHandler.END
+
         df = pd.read_excel(excel_file)
 
-        # Append new row
-        new_entry = {
+        # Create a new DataFrame for the new entry
+        new_entry = pd.DataFrame([{
             'Index': len(df) + 1,
             'Serial Number': data[0].strip(),
             'Model': data[1].strip(),
@@ -92,8 +120,10 @@ def add_buy_entry(update: Update, context):
             'Sell Price': None,
             'Purchase Date': data[4].strip(),
             'Sell Date': None
-        }
-        df = df.append(new_entry, ignore_index=True)
+        }])
+
+        # Concatenate the new entry with the existing DataFrame
+        df = pd.concat([df, new_entry], ignore_index=True)
 
         # Save and upload the Excel file
         excel_output = io.BytesIO()
@@ -101,41 +131,42 @@ def add_buy_entry(update: Update, context):
         upload_excel(excel_output)
 
         # Send confirmation message with full details
-        update.message.reply_text(
+        await update.message.reply_text(
             f"Buy entry added successfully! Here are the details:\n\n"
-            f"Serial Number: {new_entry['Serial Number']}\n"
-            f"Model: {new_entry['Model']}\n"
-            f"Storage: {new_entry['Storage']}\n"
-            f"Purchase Price: {new_entry['Purchase Price']}\n"
-f"Purchase Date: {new_entry['Purchase Date']}\n"
+            f"Serial Number: {new_entry['Serial Number'][0]}\n"
+            f"Model: {new_entry['Model'][0]}\n"
+            f"Storage: {new_entry['Storage'][0]}\n"
+            f"Purchase Price: {new_entry['Purchase Price'][0]}\n"
+            f"Purchase Date: {new_entry['Purchase Date'][0]}\n"
         )
     except Exception as e:
-        update.message.reply_text(f"Error: {e}")
-    
+        await update.message.reply_text(f"Error: {e}")
+
     return ConversationHandler.END
+
 
 # Handle product selection for sell
 @allowed_user
-def choose_product(update: Update, context):
+async def choose_product(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         product_index = int(update.message.text)
         unsold_products = context.user_data['unsold_products']
-        
+
         if product_index not in unsold_products.index:
             raise ValueError("Invalid product number.")
 
         context.user_data['selected_product'] = product_index
-        update.message.reply_text("Provide the Sell Date and Sell Price (format: YYYY-MM-DD, Price):")
+        await update.message.reply_text("Provide the Sell Date and Sell Price (format: YYYY-MM-DD, Price):")
         return SELL_DETAILS
     except Exception as e:
-        update.message.reply_text(f"Error: {e}")
+        await update.message.reply_text(f"Error: {e}")
         return ConversationHandler.END
+
 
 # Handle sell entry
 @allowed_user
-def add_sell_entry(update: Update, context):
+async def add_sell_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        # Get user input
         data = update.message.text.split(',')
         if len(data) != 2:
             raise ValueError("Incorrect format. Provide 2 values separated by a comma.")
@@ -145,6 +176,10 @@ def add_sell_entry(update: Update, context):
 
         # Download Excel
         excel_file = download_excel()
+        if excel_file is None:
+            await update.message.reply_text("Failed to download the Excel file.")
+            return ConversationHandler.END
+
         df = pd.read_excel(excel_file)
 
         # Update the selected product
@@ -157,9 +192,8 @@ def add_sell_entry(update: Update, context):
         df.to_excel(excel_output, index=False)
         upload_excel(excel_output)
 
-        # Send confirmation message with full details
         selected_product = df.loc[product_index]
-        update.message.reply_text(
+        await update.message.reply_text(
             f"Sell entry updated successfully! Here are the details:\n\n"
             f"Serial Number: {selected_product['Serial Number']}\n"
             f"Model: {selected_product['Model']}\n"
@@ -170,37 +204,30 @@ def add_sell_entry(update: Update, context):
             f"Sell Date: {selected_product['Sell Date']}\n"
         )
     except Exception as e:
-        update.message.reply_text(f"Error: {e}")
-    
+        await update.message.reply_text(f"Error: {e}")
+
     return ConversationHandler.END
+
 
 # Define conversation handler with states
 conv_handler = ConversationHandler(
     entry_points=[CommandHandler('start', start)],
     states={
-        CHOOSE_ACTION: [MessageHandler(Filters.text & ~Filters.command, choose_action)],
-        ADD_BUY: [MessageHandler(Filters.text & ~Filters.command, add_buy_entry)],
-        CHOOSE_PRODUCT: [MessageHandler(Filters.text & ~Filters.command, choose_product)],
-        SELL_DETAILS: [MessageHandler(Filters.text & ~Filters.command, add_sell_entry)]
+        CHOOSE_ACTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_action)],
+        ADD_BUY: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_buy_entry)],
+        CHOOSE_PRODUCT: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_product)],
+        SELL_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_sell_entry)]
     },
     fallbacks=[]
 )
 
+
 # Initialize Telegram Bot
 def main():
-    updater = Updater(os.getenv('TELEGRAM_BOT_TOKEN'), use_context=True)
-    dp = updater.dispatcher
+    application = ApplicationBuilder().token('TELEGRAM_BOT_TOKEN').build()  # Replace with your bot token
+    application.add_handler(conv_handler)
+    application.run_polling()
 
-    dp.add_handler(conv_handler)
 
-    updater.start_polling()
-    updater.idle()
-
-# Flask route to run Telegram bot
-@app.route('/')
-def index():
+if __name__ == '__main__':
     main()
-    return 'Bot is running'
-
-if name == '__main__':
-    app.run(debug=True)
