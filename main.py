@@ -231,7 +231,7 @@ async def add_sell_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
-# Define conversation handler with states
+# Conversation handler now includes the /cancel command
 conv_handler = ConversationHandler(
     entry_points=[CommandHandler('start', start)],
     states={
@@ -240,7 +240,7 @@ conv_handler = ConversationHandler(
         CHOOSE_PRODUCT: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_product)],
         SELL_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_sell_entry)]
     },
-    fallbacks=[]
+    fallbacks=[CommandHandler('cancel', cancel)]  # Added /cancel as a fallback
 )
 
 
