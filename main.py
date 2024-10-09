@@ -227,10 +227,9 @@ conv_handler = ConversationHandler(
 
 # Initialize Telegram Bot
 def main():
-    application = ApplicationBuilder().token('TELEGRAM_BOT_TOKEN').build()  # Replace with your bot token
+    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()  # Pass the actual variable
     application.add_handler(conv_handler)
     application.run_polling()
-
 
 if __name__ == '__main__':
     main()
