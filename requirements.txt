@@ -1,5 +1,5 @@
-numpy==1.23
-pandas==1.5.3
+numpy==1.23.5 --no-binary=numpy
+pandas==1.5.3 --no-binary=pandas
 dropbox==11.34.0
 openpyxl==3.0.10
 python-telegram-bot==20.0
