@@ -58,18 +58,28 @@ def allowed_user(func):
     return wrapper
 
 
-# Function to process date input
-def get_processed_date(user_input):
-    today = datetime.today()
-    if user_input.strip().upper() == 'T':
-        return today.strftime('%Y-%m-%d')
-    elif user_input.strip().upper() == 'Y':
-        yesterday = today - timedelta(days=1)
-        return yesterday.strftime('%Y-%m-%d')
-    else:
-        # Assuming input is MM-DD format, append the current year
-        return f"{today.year}-{user_input.strip()}"
+# Helper function to handle date input
+def parse_date_input(date_str):
+    """
+    Parses the date input:
+    - 'T' for today's date
+    - 'Y' for yesterday's date
+    - 'MM-DD' to append the current year
 
+    Returns the formatted date string (YYYY-MM-DD).
+    """
+    current_year = datetime.now().year
+    if date_str.strip().upper() == 'T':
+        return datetime.now().strftime(f"%Y-%m-%d")
+    elif date_str.strip().upper() == 'Y':
+        return (datetime.now() - timedelta(days=1)).strftime(f"%Y-%m-%d")
+    else:
+        try:
+            month_day = datetime.strptime(date_str.strip(), "%m-%d")
+            return month_day.replace(year=current_year).strftime("%Y-%m-%d")
+        except ValueError:
+            raise ValueError("Invalid date format. Use 'T', 'Y', or MM-DD.")
+            
 # Cancel command to exit conversation
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Operation canceled. No data has been saved.", reply_markup=ReplyKeyboardRemove())
@@ -116,13 +126,16 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return CHOOSE_PRODUCT
 
 
-# Handle buy entry
+Adjusting the add_buy_entry function
 @allowed_user
 async def add_buy_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         data = update.message.text.split(',')
         if len(data) != 5:
             raise ValueError("Incorrect format. Provide 5 values separated by commas.")
+
+        # Parse the purchase date
+        purchase_date = parse_date_input(data[4].strip())
 
         # Download Excel
         excel_file = download_excel()
@@ -140,7 +153,7 @@ async def add_buy_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'Storage': data[2].strip(),
             'Purchase Price': data[3].strip(),
             'Sell Price': None,
-            'Purchase Date': data[4].strip(),
+            'Purchase Date': purchase_date,  # Use parsed date
             'Sell Date': None
         }])
 
@@ -165,7 +178,6 @@ async def add_buy_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Error: {e}")
 
     return ConversationHandler.END
-
 
 # Handle product selection for sell
 @allowed_user
