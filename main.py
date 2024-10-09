@@ -126,7 +126,7 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return CHOOSE_PRODUCT
 
 
-Adjusting the add_buy_entry function
+#Adjusting the add_buy_entry function
 @allowed_user
 async def add_buy_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
