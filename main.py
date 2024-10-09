@@ -205,7 +205,7 @@ async def add_sell_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(data) != 2:
             raise ValueError("Incorrect format. Provide 2 values separated by a comma.")
 
-        sell_date = data[0].strip()
+        sell_date = parse_date_input(data[4].strip())
         sell_price = data[1].strip()
 
         # Download Excel
