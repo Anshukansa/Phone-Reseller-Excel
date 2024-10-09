@@ -232,13 +232,19 @@ conv_handler = ConversationHandler(
 
 # Set up the application
 async def main():
+    # Create and initialize the application
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+
+    # Initialize the bot
+    await application.initialize()
 
     # Register the conversation handler
     application.add_handler(conv_handler)
 
-    # Run the bot
+    # Start polling the bot
     await application.start()
+
+    # Keep the bot running until manually stopped
     await application.updater.start_polling()
     await application.idle()
 
