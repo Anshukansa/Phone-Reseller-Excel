@@ -119,7 +119,7 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         products_list = "\n".join(
             [f"{row.Index}: {row[2]} - {row[1]}" for row in unsold_products.itertuples()])
-            [f"{idx + 1}: {row[2]} - {row[1]}" for row in unsold_products.itertuples()])
+            [f"{row.Index + 1}: {row[2]} - {row[1]}" for row in unsold_products.itertuples()])
 
         context.user_data['unsold_products'] = unsold_products
         await update.message.reply_text(f"Choose a product to sell by number:\n{products_list}")
