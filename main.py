@@ -190,7 +190,7 @@ async def choose_product(update: Update, context: ContextTypes.DEFAULT_TYPE):
             raise ValueError("Invalid product number.")
 
         context.user_data['selected_product'] = product_index
-        await update.message.reply_text("Provide the Sell Date and Sell Price (format: YYYY-MM-DD, Price):")
+        await update.message.reply_text("Provide the Sell Date (format: MM-DD (T OR Y), Price)and Sell Price:")
         return SELL_DETAILS
     except Exception as e:
         await update.message.reply_text(f"Error: {e}")
