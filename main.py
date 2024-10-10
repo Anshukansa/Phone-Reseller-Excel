@@ -65,7 +65,6 @@ def parse_date_input(date_str):
     - 'T' for today's date
     - 'Y' for yesterday's date
     - 'MM-DD' to append the current year
-
     Returns the formatted date string (YYYY-MM-DD).
     """
     current_year = datetime.now().year
@@ -79,7 +78,7 @@ def parse_date_input(date_str):
             return month_day.replace(year=current_year).strftime("%Y-%m-%d")
         except ValueError:
             raise ValueError("Invalid date format. Use 'T', 'Y', or MM-DD.")
-            
+
 # Cancel command to exit conversation
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Operation canceled. No data has been saved.", reply_markup=ReplyKeyboardRemove())
@@ -119,6 +118,7 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return ConversationHandler.END
 
         products_list = "\n".join(
+            [f"{row.Index}: {row[2]} - {row[1]}" for row in unsold_products.itertuples()])
             [f"{idx + 1}: {row[2]} - {row[1]}" for row in unsold_products.itertuples()])
 
         context.user_data['unsold_products'] = unsold_products
@@ -190,7 +190,7 @@ async def choose_product(update: Update, context: ContextTypes.DEFAULT_TYPE):
             raise ValueError("Invalid product number.")
 
         context.user_data['selected_product'] = product_index
-        await update.message.reply_text("Provide the Sell Date (format: MM-DD (T OR Y), Price)and Sell Price:")
+        await update.message.reply_text("Provide the Sell Date and Sell Price (format: YYYY-MM-DD, Price):")
         return SELL_DETAILS
     except Exception as e:
         await update.message.reply_text(f"Error: {e}")
